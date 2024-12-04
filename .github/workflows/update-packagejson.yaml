@@ -127,7 +127,6 @@ jobs:
               for char in $(echo -n "$actual" | od -An -t uC); do echo "$char"; done
               for char in $(echo -n "$expected" | od -An -t uC); do echo "$char"; done
 
-
               if [[ "$actual" != "$expected" ]]; then
                 echo "Failed. Path: $file_path, Expected: $expected, Actual: $actual"
                 exit 1
