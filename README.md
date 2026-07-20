@@ -57,15 +57,13 @@ jobs:
 
 ## create-release
 
-> [See workflow](https://github.com/Cysharp/Actions/blob/main/.github/workflows/create-release.yaml)
+> [See workflow](https://github.com/ChronosGames/Actions/blob/main/.github/workflows/create-release.yaml)
 
-Create GitHub Release, upload NuGet and upload artifact to release assets. Mainly used for NuGet and Unity release workflow.
+Create GitHub Release and upload artifact to release assets. Mainly used for NuGet and Unity release workflow.
 
-Required secrets.
+NuGet publishing uses [publish-nuget](https://github.com/ChronosGames/Actions/tree/main/.github/actions/publish-nuget) in a normal job, not this reusable workflow. This lets [NuGet Trusted Publishing](https://learn.microsoft.com/nuget/nuget-org/trusted-publishing) validate the calling repository and workflow through OIDC, so no long-lived NuGet API-key secret is needed.
 
-| SecretKey | When | Description |
-| ---- | ---- | ---- |
-| `NUGET_KEY` | `with.nuget-push` is true | This secret is required to push nupkg, snupkg to NuGet.org |
+Before publishing, create a Trusted Publishing policy on NuGet.org for the calling repository and workflow filename, grant the publishing job `id-token: write`, and pass the NuGet.org profile name that created the policy through `nuget-user` (for example, `${{ vars.NUGET_USER }}`).
 
 **Sample usage**
 
@@ -81,21 +79,21 @@ on:
         description: "tag: git tag you want create. (sample 1.0.0)"
         required: true
       dry-run:
-        description: "dry_run: true will never create release/nuget."
+        description: "dry_run: true will never create release."
         required: true
         default: false
         type: boolean
 
 jobs:
   create-release:
-    uses: Cysharp/Actions/.github/workflows/create-release.yaml@main
+    permissions:
+      contents: write
+    uses: ChronosGames/Actions/.github/workflows/create-release.yaml@main
     with:
       commit-id: ''
       tag: ${{ inputs.tag }}
       dry-run: ${{ inputs.dry-run }} # if true, delete tag after Release creation & 60s later.
-      nuget-push: false
       release-upload: false
-    secrets: inherit
 ```
 
 Change release name not to use `Ver.` prefix.
@@ -110,25 +108,25 @@ on:
         description: "tag: git tag you want create. (sample 1.0.0)"
         required: true
       dry-run:
-        description: "dry_run: true will never create release/nuget."
+        description: "dry_run: true will never create release."
         required: true
         default: false
         type: boolean
 
 jobs:
   create-release:
-    uses: Cysharp/Actions/.github/workflows/create-release.yaml@main
+    permissions:
+      contents: write
+    uses: ChronosGames/Actions/.github/workflows/create-release.yaml@main
     with:
       commit-id: ''
       tag: ${{ inputs.tag }}
       dry-run: ${{ inputs.dry-run }} # if true, delete tag after Release creation & 60s later.
-      nuget-push: false
       release-upload: false
       release-format: '{0}'
-    secrets: inherit
 ```
 
-Build .NET then create release. `create-release` will push nuget packages.
+Build .NET, create the release, then publish NuGet packages through OIDC.
 
 ```yaml
 name: Build-Release
@@ -140,7 +138,7 @@ on:
         description: "tag: git tag you want create. (sample 1.0.0)"
         required: true
       dry-run:
-        description: "dry_run: true will never create release/nuget."
+        description: "dry_run: true will never create release."
         required: true
         default: false
         type: boolean
@@ -154,11 +152,11 @@ jobs:
         working-directory: ./Sandbox
     steps:
       - uses: actions/checkout@v4
-      - uses: Cysharp/Actions/.github/actions/setup-dotnet@main
+      - uses: ChronosGames/Actions/.github/actions/setup-dotnet@main
       - run: dotnet build -c Release -p:Version=${{ inputs.tag }}
       - run: dotnet pack --no-build -c Release -p:Version=${{ inputs.tag }} -p:IncludeSymbols=true -p:SymbolPackageFormat=snupkg -o ./publish
       - name: upload artifacts
-        uses: Cysharp/Actions/.github/actionsupload-artifact@main
+        uses: ChronosGames/Actions/.github/actions/upload-artifact@main
         with:
           name: nuget
           path: ./Sandbox/publish
@@ -166,17 +164,33 @@ jobs:
 
   create-release:
     needs: [build-dotnet]
-    uses: Cysharp/Actions/.github/workflows/create-release.yaml@main
+    permissions:
+      contents: write
+    uses: ChronosGames/Actions/.github/workflows/create-release.yaml@main
     with:
       commit-id: ''
       tag: ${{ inputs.tag }}
       dry-run: ${{ inputs.dry-run }} # if true, delete tag after Release creation & 60s later.
-      nuget-push: true
       release-upload: false
-    secrets: inherit                 # to allow workflow to access NUGET_KEY secret
+
+  publish-nuget:
+    needs: [build-dotnet, create-release]
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: nuget
+          path: ./nuget
+      - uses: ChronosGames/Actions/.github/actions/setup-dotnet@main
+      - uses: ChronosGames/Actions/.github/actions/publish-nuget@main
+        with:
+          nuget-user: ${{ vars.NUGET_USER }}
+          dry-run: ${{ inputs.dry-run }}
 ```
 
-Build .NET and Unity, then create release. `create-release` will push nuget packages and upload unitypackage to release assets.
+Build .NET and Unity, then create the release, publish NuGet packages through OIDC, and upload unitypackage files as release assets.
 
 ```yaml
 name: Build-Release
@@ -188,7 +202,7 @@ on:
         description: "tag: git tag you want create. (sample 1.0.0)"
         required: true
       dry-run:
-        description: "dry_run: true will never create release/nuget."
+        description: "dry_run: true will never create release."
         required: true
         default: false
         type: boolean
@@ -196,7 +210,7 @@ on:
 jobs:
   update-packagejson:
     if: ${{ github.actor != 'dependabot[bot]' }}
-    uses: Cysharp/Actions/.github/workflows/update-packagejson.yaml@main
+    uses: ChronosGames/Actions/.github/workflows/update-packagejson.yaml@main
     with:
       file-path: |
         ./Sandbox/Sandbox.Unity/Assets/Plugins/Foo/package.json
@@ -215,11 +229,11 @@ jobs:
         working-directory: ./Sandbox
     steps:
       - uses: actions/checkout@v4
-      - uses: Cysharp/Actions/.github/actions/setup-dotnet@main
+      - uses: ChronosGames/Actions/.github/actions/setup-dotnet@main
       - run: dotnet build -c Release -p:Version=${{ inputs.tag }}
       - run: dotnet pack --no-build -c Release -p:Version=${{ inputs.tag }} -p:IncludeSymbols=true -p:SymbolPackageFormat=snupkg -o ./publish
       - name: upload artifacts
-        uses: Cysharp/Actions/.github/actionsupload-artifact@main
+        uses: ChronosGames/Actions/.github/actions/upload-artifact@main
         with:
           name: nuget
           path: ./Sandbox/publish
@@ -235,12 +249,12 @@ jobs:
         with:
           ref: ${{ needs.update-packagejson.outputs.sha }}
       # Store artifacts.
-      - uses: Cysharp/Actions/.github/actions/upload-artifact@main
+      - uses: ChronosGames/Actions/.github/actions/upload-artifact@main
         with:
           name: Sandbox.Unity.unitypackage
           path: ./Sandbox/Sandbox.Unity/output/Sandbox.Unity.unitypackage
           if-no-files-found: error
-      - uses: Cysharp/Actions/.github/actions/upload-artifact@main
+      - uses: ChronosGames/Actions/.github/actions/upload-artifact@main
         with:
           name: Sandbox.Unity.Plugin.unitypackage
           path: ./Sandbox/Sandbox.Unity/output/Sandbox.Unity.Plugin.unitypackage
@@ -248,24 +262,40 @@ jobs:
 
   create-release:
     needs: [update-packagejson, build-dotnet, build-unity]
-    uses: Cysharp/Actions/.github/workflows/create-release.yaml@main
+    permissions:
+      contents: write
+    uses: ChronosGames/Actions/.github/workflows/create-release.yaml@main
     with:
       commit-id: ${{ needs.update-packagejson.outputs.sha }}
       tag: ${{ inputs.tag }}
       dry-run: ${{ inputs.dry-run }} # if true, delete tag after Release creation & 60s later.
-      nuget-push: true
       release-upload: true
       release-asset-path: |
         ./Sandbox.Unity.unitypackage/Sandbox.Unity.unitypackage
         ./Sandbox.Unity.Plugin.unitypackage/Sandbox.Unity.Plugin.unitypackage
         ./nuget/ClassLibrary.${{ inputs.tag }}.nupkg
         ./nuget/ClassLibrary.${{ inputs.tag }}.snupkg
-    secrets: inherit                 # to allow workflow to access NUGET_KEY secret
+
+  publish-nuget:
+    needs: [create-release]
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: nuget
+          path: ./nuget
+      - uses: ChronosGames/Actions/.github/actions/setup-dotnet@main
+      - uses: ChronosGames/Actions/.github/actions/publish-nuget@main
+        with:
+          nuget-user: ${{ vars.NUGET_USER }}
+          dry-run: ${{ inputs.dry-run }}
 
   cleanup:
     if: ${{ needs.update-packagejson.outputs.is-branch-created == 'true' }}
     needs: [update-packagejson]
-    uses: Cysharp/Actions/.github/workflows/clean-packagejson-branch.yaml@main
+    uses: ChronosGames/Actions/.github/workflows/clean-packagejson-branch.yaml@main
     with:
       branch: ${{ needs.update-packagejson.outputs.branch-name }}
 ```

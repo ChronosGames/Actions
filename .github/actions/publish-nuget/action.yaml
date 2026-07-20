@@ -1,0 +1,68 @@
+name: Publish NuGet packages
+description: Publish NuGet packages to NuGet.org with OIDC Trusted Publishing
+inputs:
+  nuget-path:
+    description: NuGet package paths to upload. This is a list of paths separated by a newline.
+    required: false
+    default: |
+      ./nuget/*.nupkg
+      ./nuget/*.snupkg
+  nuget-user:
+    description: NuGet.org profile name that created the Trusted Publishing policy.
+    required: true
+  dry-run:
+    description: "true = validate packages without publishing."
+    required: false
+    default: "false"
+
+runs:
+  using: composite
+  steps:
+    - name: Validate NuGet packages
+      shell: bash
+      env:
+        NUGET_PATH: ${{ inputs.nuget-path }}
+      run: |
+        package_count=0
+        while IFS= read -r nuget_path; do
+          if [[ -z "${nuget_path// }" ]]; then continue; fi
+          packages=()
+          mapfile -t packages < <(compgen -G "${nuget_path}" || true)
+          for package in "${packages[@]}"; do
+            if [[ -f "${package}" ]]; then
+              package_count=$((package_count + 1))
+            fi
+          done
+        done <<< "${NUGET_PATH}"
+
+        if [[ "${package_count}" -eq 0 ]]; then
+          echo "No NuGet packages found. paths: ${NUGET_PATH}"
+          exit 1
+        fi
+    - name: NuGet login (OIDC → temporary API key)
+      id: nuget-login
+      if: ${{ inputs.dry-run != 'true' }}
+      uses: NuGet/login@v1
+      with:
+        user: ${{ inputs.nuget-user }}
+    - name: Upload to NuGet (DryRun=${{ inputs.dry-run }})
+      shell: bash
+      env:
+        DRY_RUN: ${{ inputs.dry-run }}
+        NUGET_API_KEY: ${{ steps.nuget-login.outputs.NUGET_API_KEY }}
+        NUGET_PATH: ${{ inputs.nuget-path }}
+      run: |
+        while IFS= read -r nuget_path; do
+          if [[ -z "${nuget_path// }" ]]; then continue; fi
+          packages=()
+          mapfile -t packages < <(compgen -G "${nuget_path}" || true)
+          for package in "${packages[@]}"; do
+            if [[ ! -f "${package}" ]]; then continue; fi
+
+            if [[ "${DRY_RUN}" == "true" ]]; then
+              echo "(dry run) dotnet nuget push \"${package}\" --skip-duplicate -s https://api.nuget.org/v3/index.json"
+            else
+              dotnet nuget push "${package}" --skip-duplicate -s https://api.nuget.org/v3/index.json -k "${NUGET_API_KEY}"
+            fi
+          done
+        done <<< "${NUGET_PATH}"
