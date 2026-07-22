@@ -26,17 +26,43 @@ inputs:
     required: false
     default: "None"
     description: "The versioning scheme to use when building the project"
+  unityLicense:
+    required: false
+    default: ""
+    description: "Unity .ulf license file contents. Pass secrets.UNITY_LICENSE, or set UNITY_LICENSE in the calling job environment."
+  unitySerial:
+    required: false
+    default: ""
+    description: "Unity serial number for professional licenses. Pass secrets.UNITY_SERIAL, or set UNITY_SERIAL in the calling job environment."
+  unityEmail:
+    required: false
+    default: ""
+    description: "Unity account email. Pass secrets.UNITY_EMAIL, or set UNITY_EMAIL in the calling job environment."
+  unityPassword:
+    required: false
+    default: ""
+    description: "Unity account password. Pass secrets.UNITY_PASSWORD, or set UNITY_PASSWORD in the calling job environment."
 
 runs:
   using: "composite"
   steps:
-    - name: Replace last 4 charactors of UNITY_SERIAL and mask it.
+    - name: Mask UNITY_SERIAL suffix
       shell: bash
-      run: echo "::add-mask::$(echo ${{ env.UNITY_SERIAL }} | sed 's/....$//')XXXX"
+      env:
+        UNITY_SERIAL_VALUE: ${{ inputs.unitySerial || env.UNITY_SERIAL }}
+      run: |
+        if [ -n "$UNITY_SERIAL_VALUE" ]; then
+          echo "::add-mask::$(echo "$UNITY_SERIAL_VALUE" | sed 's/....$//')XXXX"
+        fi
     # see: https://github.com/game-ci/unity-builder
     # see: https://game.ci/docs/github/builder/
     - name: Build Unity
       uses: game-ci/unity-builder@v4
+      env:
+        UNITY_LICENSE: ${{ inputs.unityLicense || env.UNITY_LICENSE }}
+        UNITY_SERIAL: ${{ inputs.unitySerial || env.UNITY_SERIAL }}
+        UNITY_EMAIL: ${{ inputs.unityEmail || env.UNITY_EMAIL }}
+        UNITY_PASSWORD: ${{ inputs.unityPassword || env.UNITY_PASSWORD }}
       with:
         targetPlatform: ${{ inputs.targetPlatform }}
         unityVersion: ${{ inputs.unityVersion }}
