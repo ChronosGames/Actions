@@ -635,4 +635,4 @@ jobs:
           unityLicense: ${{ secrets.UNITY_LICENSE }}
 ```
 
-`unity-builder` forwards Unity credentials to `game-ci/unity-builder@v4`. GitHub organization secrets are not automatically available inside a composite action by name; expose them from the calling workflow with `with` inputs, or set the matching job `env` values before invoking the action. For a Unity license file, pass `unityLicense: ${{ secrets.UNITY_LICENSE }}` or set `UNITY_LICENSE`. For professional licenses, pass `unitySerial`, `unityEmail`, and `unityPassword`, or set `UNITY_SERIAL`, `UNITY_EMAIL`, and `UNITY_PASSWORD`.
+`unity-builder` forwards `UNITY_LICENSE` to `game-ci/unity-builder@v4` and opts its JavaScript actions into the Node.js 24 runtime. GitHub organization secrets are not automatically available inside a composite action by name; pass `unityLicense: ${{ secrets.UNITY_LICENSE }}` or set `UNITY_LICENSE` in the calling job environment.
