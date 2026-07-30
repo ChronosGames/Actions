@@ -635,4 +635,12 @@ jobs:
           unityLicense: ${{ secrets.UNITY_LICENSE }}
 ```
 
-`unity-builder` forwards `UNITY_LICENSE` to `game-ci/unity-builder@v4` and opts its JavaScript actions into the Node.js 24 runtime. GitHub organization secrets are not automatically available inside a composite action by name; pass `unityLicense: ${{ secrets.UNITY_LICENSE }}` or set `UNITY_LICENSE` in the calling job environment.
+For a Unity Pro or Plus license, pass the serial instead:
+
+```yaml
+          unitySerial: ${{ secrets.UNITY_SERIAL }}
+```
+
+`unity-builder` forwards `UNITY_LICENSE` and `UNITY_SERIAL` to `game-ci/unity-builder@v4` and opts its JavaScript actions into the Node.js 24 runtime. GitHub organization secrets are not automatically available inside a composite action by name; pass `unityLicense: ${{ secrets.UNITY_LICENSE }}` / `unitySerial: ${{ secrets.UNITY_SERIAL }}`, or set the corresponding variable in the calling job environment. `UNITY_EMAIL` and `UNITY_PASSWORD` do not replace either license credential: personal licenses require the `.ulf` contents in `UNITY_LICENSE`, while Pro/Plus licenses require `UNITY_SERIAL`.
+
+If the action reports that the license credential is missing, verify that the repository or organization secret exists and is available to the workflow. An unavailable secret expands to an empty string; the action cannot derive a license from the email and password. Follow the [GameCI activation instructions](https://game.ci/docs/github/activation/) to create the appropriate credential.
